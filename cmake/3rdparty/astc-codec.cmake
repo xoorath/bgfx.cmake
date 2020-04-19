@@ -8,21 +8,29 @@
 # You should have received a copy of the CC0 Public Domain Dedication along with
 # this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 
-if( TARGET etc2 )
+if( TARGET astc-codec )
 	return()
 endif()
 
-file( GLOB ETC2_SOURCES ${BIMG_DIR}/3rdparty/etc2/*.cpp ${BIMG_DIR}/3rdparty/etc2/*.h )
+file(
+	GLOB
+	ASTC_CODEC_SOURCES
+	${BIMG_DIR}/3rdparty/astc-codec/src/decoder/*.cc
+	${BIMG_DIR}/3rdparty/astc-codec/src/decoder/*.h
+)
 
-add_library( etc2 STATIC ${ETC2_SOURCES} )
-target_include_directories( etc2 PUBLIC $<BUILD_INTERFACE:${BIMG_DIR}/3rdparty> )
-set_target_properties( etc2 PROPERTIES FOLDER "bgfx/3rdparty" )
-target_link_libraries( etc2 PUBLIC bx )
+add_library( astc-codec STATIC ${ASTC_CODEC_SOURCES} )
+target_include_directories( astc-codec
+	PUBLIC
+		$<BUILD_INTERFACE:${BIMG_DIR}/3rdparty>
+		$<BUILD_INTERFACE:${BIMG_DIR}/3rdparty/astc-codec>
+		$<BUILD_INTERFACE:${BIMG_DIR}/3rdparty/astc-codec/include> )
+set_target_properties( astc-codec PROPERTIES FOLDER "bgfx/3rdparty" )
 
 if( BGFX_INSTALL )
 	include(GNUInstallDirs)
 	install(
-		TARGETS etc2
+		TARGETS astc-codec
 		EXPORT bgfx-config
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()

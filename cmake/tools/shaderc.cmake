@@ -13,38 +13,59 @@ include( CMakeParseArguments )
 include( cmake/3rdparty/fcpp.cmake )
 include( cmake/3rdparty/glsl-optimizer.cmake )
 include( cmake/3rdparty/glslang.cmake )
+include( cmake/3rdparty/spirv-cross.cmake )
+include( cmake/3rdparty/spirv-tools.cmake )
 
-add_executable( shaderc ${BGFX_DIR}/tools/shaderc/shaderc.cpp ${BGFX_DIR}/tools/shaderc/shaderc.h ${BGFX_DIR}/tools/shaderc/shaderc_glsl.cpp ${BGFX_DIR}/tools/shaderc/shaderc_hlsl.cpp ${BGFX_DIR}/tools/shaderc/shaderc_pssl.cpp ${BGFX_DIR}/tools/shaderc/shaderc_spirv.cpp )
+add_executable( shaderc ${BGFX_DIR}/tools/shaderc/shaderc.cpp ${BGFX_DIR}/tools/shaderc/shaderc.h ${BGFX_DIR}/tools/shaderc/shaderc_glsl.cpp ${BGFX_DIR}/tools/shaderc/shaderc_hlsl.cpp ${BGFX_DIR}/tools/shaderc/shaderc_pssl.cpp ${BGFX_DIR}/tools/shaderc/shaderc_spirv.cpp ${BGFX_DIR}/tools/shaderc/shaderc_metal.cpp )
 target_compile_definitions( shaderc PRIVATE "-D_CRT_SECURE_NO_WARNINGS" )
 set_target_properties( shaderc PROPERTIES FOLDER "bgfx/tools" )
-target_link_libraries( shaderc bx bimg bgfx-vertexdecl bgfx-shader-spirv fcpp glsl-optimizer glslang )
+target_link_libraries( shaderc bx bimg bgfx-vertexlayout bgfx-shader-spirv fcpp glsl-optimizer glslang spirv-cross spirv-tools )
+
 if( BGFX_CUSTOM_TARGETS )
 	add_dependencies( tools shaderc )
 endif()
 
-if (IOS)
+if (ANDROID)
+	target_link_libraries( shaderc log )
+elseif (IOS)
 	set_target_properties(shaderc PROPERTIES MACOSX_BUNDLE ON
 											 MACOSX_BUNDLE_GUI_IDENTIFIER shaderc)
 endif()
 
 function( add_shader ARG_FILE )
 	# Parse arguments
-	cmake_parse_arguments( ARG "FRAGMENT;VERTEX" "OUTPUT;GLSL_VERSION;DX9_MODEL;DX11_MODEL" "PLATFORMS" ${ARGN} )
+	cmake_parse_arguments( ARG "FRAGMENT;VERTEX;COMPUTE" "OUTPUT;GLSL_VERSION;DX9_MODEL;DX11_MODEL" "PLATFORMS" ${ARGN} )
 
 	# Get filename
 	get_filename_component( FILENAME "${ARG_FILE}" NAME_WE )
 
-	# Determine if fragment or vertex
-	if( ARG_FRAGMENT AND ARG_VERTEX )
+	# Determine if fragment or vertex or compute
+	if( ARG_FRAGMENT AND ARG_VERTEX AND ARG_COMPUTE )
+		message( SEND_ERROR "add_shader cannot be called with all FRAGMENT and VERTEX and COMPUTE." )
+		return()
+	elseif( ARG_FRAGMENT AND ARG_VERTEX )
 		message( SEND_ERROR "add_shader cannot be called with both FRAGMENT and VERTEX." )
-	elseif( ARG_FRAGMENT )
+		return()
+	elseif( ARG_FRAGMENT AND ARG_COMPUTE )
+		message( SEND_ERROR "add_shader cannot be called with both FRAGMENT and COMPUTE." )
+		return()
+	elseif( ARG_VERTEX AND ARG_COMPUTE )
+		message( SEND_ERROR "add_shader cannot be called with both VERTEX and COMPUTE." )
+		return()
+	endif()
+
+	if( ARG_FRAGMENT )
 		set( TYPE "FRAGMENT" )
 		set( D3D_PREFIX "ps" )
 	elseif( ARG_VERTEX )
 		set( TYPE "VERTEX" )
 		set( D3D_PREFIX "vs" )
+	elseif( ARG_COMPUTE )
+		set( TYPE "COMPUTE" )
+		set( D3D_PREFIX "cs" )
 	else()
-		message( SEND_ERROR "add_shader must be called with either FRAGMENT or VERTEX." )
+		message( SEND_ERROR "add_shader must be called with either FRAGMENT or VERTEX or COMPUTE." )
+ 		return()
 	endif()
 
 	# Determine compatible platforms
@@ -72,11 +93,14 @@ function( add_shader ARG_FILE )
 	if( ARG_DX9_MODEL )
 		set( DX9_PROFILE PROFILE ${D3D_PREFIX}_${ARG_DX9_MODEL} )
 	endif()
-	set( DX11_PROFILE PROFILE ${D3D_PREFIX}_4_0 )
+	set( DX11_PROFILE PROFILE ${D3D_PREFIX}_5_0 )
 	if( ARG_DX11_MODEL )
 		set( DX11_PROFILE PROFILE ${D3D_PREFIX}_${ARG_DX11_MODEL} )
 	endif()
 	set( GLSL_PROFILE PROFILE 120 )
+	if( ARG_COMPUTE )
+		set( GLSL_PROFILE PROFILE 430 )
+	endif()
 	if( ARG_GLSL_VERSION )
 		set( GLSL_PROFILE PROFILE ${ARG_GLSL_VERSION} )
 	endif()
@@ -89,6 +113,7 @@ function( add_shader ARG_FILE )
 		set( OPTIONS ${BASE_OPTIONS} )
 		set( OUTPUT "${ARG_OUTPUT}/${PLATFORM}/${FILENAME}.bin" )
 		get_filename_component( OUTPUT "${OUTPUT}" ABSOLUTE )
+
 		if( "${PLATFORM}" STREQUAL "dx9" )
 			list( APPEND OPTIONS
 				WINDOWS
@@ -133,6 +158,7 @@ function( add_shader ARG_FILE )
 			message( SEND_ERROR "add_shader given bad platform: ${PLATFORM}" )
 			return()
 		endif()
+
 		list( APPEND OUTPUTS ${OUTPUT} )
 		shaderc_parse( CMD ${OPTIONS} )
 		list( APPEND COMMANDS COMMAND "${CMAKE_COMMAND}" -E make_directory "${ARG_OUTPUT}/${PLATFORM}" )
@@ -177,7 +203,7 @@ endfunction()
 # shaderc_parse(
 #	FILE filename
 #	OUTPUT filename
-#	FRAGMENT|VERTEX
+#	FRAGMENT|VERTEX|COMPUTE
 #	ANDROID|ASM_JS|IOS|LINUX|NACL|OSX|WINDOWS
 #	[PROFILE profile]
 #	[O 0|1|2|3]
@@ -194,7 +220,7 @@ endfunction()
 #	[WERROR]
 # )
 function( shaderc_parse ARG_OUT )
-	cmake_parse_arguments( ARG "DEPENDS;ANDROID;ASM_JS;IOS;LINUX;NACL;OSX;WINDOWS;PREPROCESS;RAW;FRAGMENT;VERTEX;VERBOSE;DEBUG;DISASM;WERROR" "FILE;OUTPUT;VARYINGDEF;BIN2C;PROFILE;O" "INCLUDES;DEFINES" ${ARGN} )
+	cmake_parse_arguments( ARG "DEPENDS;ANDROID;ASM_JS;IOS;LINUX;NACL;OSX;WINDOWS;PREPROCESS;RAW;FRAGMENT;VERTEX;COMPUTE;VERBOSE;DEBUG;DISASM;WERROR" "FILE;OUTPUT;VARYINGDEF;BIN2C;PROFILE;O" "INCLUDES;DEFINES" ${ARGN} )
 	set( CLI "" )
 
 	# -f
@@ -288,7 +314,7 @@ function( shaderc_parse ARG_OUT )
 
 	# --type
 	set( TYPE "" )
-	set( TYPES "FRAGMENT;VERTEX" )
+	set( TYPES "FRAGMENT;VERTEX;COMPUTE" )
 	foreach( T ${TYPES} )
 		if( ARG_${T} )
 			if( TYPE )
@@ -305,6 +331,8 @@ function( shaderc_parse ARG_OUT )
 		list( APPEND CLI "--type" "fragment" )
 	elseif( "${TYPE}" STREQUAL "VERTEX" )
 		list( APPEND CLI "--type" "vertex" )
+	elseif( "${TYPE}" STREQUAL "COMPUTE" )
+		list( APPEND CLI "--type" "compute" )
 	endif()
 
 	# --varyingdef

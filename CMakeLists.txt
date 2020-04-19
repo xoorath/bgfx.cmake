@@ -12,11 +12,13 @@ cmake_minimum_required( VERSION 3.0 )
 project( bgfx )
 
 set_property( GLOBAL PROPERTY USE_FOLDERS ON )
-if( APPLE AND NOT IOS )
-	set( CMAKE_CXX_FLAGS "-ObjC++ --std=c++14" )
-elseif(UNIX)
-    set(CMAKE_CXX_STANDARD 14)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Makefile generators on apple need this flag to compile mixed objective/c++
+if( APPLE AND NOT XCODE )
+	set( CMAKE_CXX_FLAGS "-ObjC++" )
 endif()
 
 option( BGFX_BUILD_TOOLS      "Build bgfx tools."                             ON  )
@@ -63,22 +65,46 @@ endif()
 include( cmake/examples.cmake )
 
 if( BGFX_INSTALL )
+	include(GNUInstallDirs)
+
 	# install bx
-	install( TARGETS bx DESTINATION lib )
+	install( TARGETS bx
+		EXPORT bgfx-config
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} )
 	install( DIRECTORY ${BX_DIR}/include DESTINATION . )
 
 	# install bimg
-	install( TARGETS bimg DESTINATION lib )
+	install( TARGETS bimg
+		EXPORT bgfx-config
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} )
 	install( DIRECTORY ${BIMG_DIR}/include DESTINATION . )
 
 	# install bgfx
-	install( TARGETS bgfx DESTINATION lib )
+	install( TARGETS bgfx
+		EXPORT bgfx-config
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} )
 	install( DIRECTORY ${BGFX_DIR}/include DESTINATION . )
+
+	# install export
+	install(
+		EXPORT bgfx-config
+		NAMESPACE bgfx::
+		DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bgfx)
 
 	# install tools
 	if( BGFX_BUILD_TOOLS )
-        install( TARGETS shaderc DESTINATION bin )
-		install( TARGETS geometryc DESTINATION bin )
+		install( TARGETS shaderc
+			EXPORT bgfx-config
+			DESTINATION bin )
+		install( TARGETS geometryc
+			EXPORT bgfx-config
+			DESTINATION bin )
+		install( TARGETS texturec
+			EXPORT bgfx-config
+			DESTINATION bin )
+		install( TARGETS texturev
+			EXPORT bgfx-config
+			DESTINATION bin )
 	endif()
 
 	# install examples
